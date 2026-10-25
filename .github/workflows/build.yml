@@ -1,0 +1,1213 @@
+name: Build APK FloatAI
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK (Manual Bypass)
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" || true
+
+      - name: Generate Project Files
+        run: |
+          set -e
+          mkdir -p app/src/main/java/com/example/floatai
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/anim
+
+          cat > settings.gradle << 'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "FloatAI"
+          include ':app'
+          EOF
+
+          cat > build.gradle << 'EOF'
+          plugins {
+              id 'com.android.application' version '8.2.2' apply false
+              id 'org.jetbrains.kotlin.android' version '1.9.22' apply false
+          }
+          EOF
+
+          cat > gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.nonTransitiveRClass=true
+          EOF
+
+          cat > app/build.gradle << 'EOF'
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
+          android {
+              namespace 'com.example.floatai'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.example.floatai"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+              buildTypes {
+                  release { minifyEnabled false }
+                  debug { minifyEnabled false }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = '17' }
+          }
+          dependencies {
+              implementation 'androidx.core:core-ktx:1.12.0'
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'com.google.android.gms:play-services-mlkit-text-recognition:19.0.0'
+          }
+          EOF
+
+          cat > app/src/main/res/values/themes.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar" />
+          </resources>
+          EOF
+
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <application
+                  android:allowBackup="true"
+                  android:icon="@drawable/app_icon"
+                  android:label="FloatAI"
+                  android:usesCleartextTraffic="false"
+                  android:theme="@style/AppTheme">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+                  <service
+                      android:name=".FloatingService"
+                      android:foregroundServiceType="mediaProjection"
+                      android:exported="false"/>
+              </application>
+          </manifest>
+          EOF
+
+          # --- DRAWABLES ---
+          cat > app/src/main/res/drawable/app_icon.xml << 'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#FFFFFF" android:pathData="M0,0h108v108h-108z"/>
+              <path android:fillColor="#00B8D4" android:pathData="M54,30 C40,30 30,40 30,54 C30,60 32,66 36,70 L36,78 L72,78 L72,70 C76,66 78,60 78,54 C78,40 68,30 54,30 Z"/>
+              <path android:fillColor="#FFFFFF" android:pathData="M44,50 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0"/>
+              <path android:fillColor="#FFFFFF" android:pathData="M64,50 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0"/>
+          </vector>
+          EOF
+
+          cat > app/src/main/res/drawable/robot_icon.xml << 'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+              <path android:fillColor="#00B8D4" android:pathData="M12,2 C8,2 5,5 5,9 C5,11 6,13 7,14 L7,18 L17,18 L17,14 C18,13 19,11 19,9 C19,5 16,2 12,2 Z"/>
+              <path android:fillColor="#FFFFFF" android:pathData="M9,8 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0"/>
+              <path android:fillColor="#FFFFFF" android:pathData="M15,8 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0"/>
+          </vector>
+          EOF
+
+          cat > app/src/main/res/drawable/ic_notification.xml << 'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+              <path android:fillColor="#FFFFFF" android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM12,17c-0.55,0 -1,-0.45 -1,-1s0.45,-1 1,-1 1,0.45 1,1 -0.45,1 -1,1zM13,13h-2V7h2v6z"/>
+          </vector>
+          EOF
+
+          cat > app/src/main/res/drawable/ic_check_green.xml << 'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="100dp" android:height="100dp" android:viewportWidth="24" android:viewportHeight="24">
+              <path android:fillColor="#4CAF50" android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM10,17l-5,-5 1.41,-1.41L10,14.17l7.59,-7.59L19,8l-9,9z"/>
+          </vector>
+          EOF
+
+          cat > app/src/main/res/drawable/ic_close_red.xml << 'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="100dp" android:height="100dp" android:viewportWidth="24" android:viewportHeight="24">
+              <path android:fillColor="#FF1744" android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM17,15.59L15.59,17 12,13.41 8.41,17 7,15.59 10.59,12 7,8.41 8.41,7 12,10.59 15.59,7 17,8.41 13.41,12 17,15.59z"/>
+          </vector>
+          EOF
+
+          cat > app/src/main/res/drawable/bg_gradient_blue.xml << 'EOF'
+          <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+              <gradient android:startColor="#00B8D4" android:endColor="#006064" android:angle="45" />
+          </shape>
+          EOF
+
+          cat > app/src/main/res/drawable/bg_menu_white.xml << 'EOF'
+          <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+              <solid android:color="#FFFFFF"/>
+              <corners android:radius="24dp"/>
+              <stroke android:width="1dp" android:color="#E0E0E0"/>
+          </shape>
+          EOF
+
+          cat > app/src/main/res/anim/floating_anim.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <set xmlns:android="http://schemas.android.com/apk/res/android"
+              android:interpolator="@android:anim/accelerate_decelerate_interpolator">
+              <translate
+                  android:fromYDelta="0%"
+                  android:toYDelta="-8%"
+                  android:duration="1000"
+                  android:repeatMode="reverse"
+                  android:repeatCount="infinite"/>
+          </set>
+          EOF
+
+          cat > app/src/main/res/anim/zoom_in.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <scale xmlns:android="http://schemas.android.com/apk/res/android" android:duration="500" android:fromXScale="0.0" android:fromYScale="0.0" android:toXScale="1.0" android:toYScale="1.0" android:pivotX="50%" android:pivotY="50%" android:interpolator="@android:anim/overshoot_interpolator" />
+          EOF
+
+          # --- LAYOUTS ---
+          cat > app/src/main/res/layout/activity_main.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:background="@drawable/bg_gradient_blue">
+
+              <LinearLayout android:id="@+id/layoutForm"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:orientation="vertical"
+                  android:gravity="center"
+                  android:padding="32dp"
+                  android:layout_centerInParent="true">
+                  <LinearLayout
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:orientation="vertical"
+                      android:background="@drawable/bg_menu_white"
+                      android:padding="24dp"
+                      android:elevation="12dp"
+                      android:layout_margin="16dp">
+                      <TextView android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:text="FloatAI"
+                          android:textColor="#00B8D4"
+                          android:textSize="32sp"
+                          android:textStyle="bold"
+                          android:layout_gravity="center"
+                          android:layout_marginBottom="24dp"/>
+                      <EditText android:id="@+id/etLicenseKey"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:hint="Masukkan Kode Akses"
+                          android:textColorHint="#999999"
+                          android:textColor="#333333"
+                          android:backgroundTint="#00B8D4"
+                          android:layout_marginBottom="16dp"/>
+                      <EditText android:id="@+id/etApiKey"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:hint="Masukkan API Key OpenRouter"
+                          android:textColorHint="#999999"
+                          android:textColor="#333333"
+                          android:backgroundTint="#00B8D4"
+                          android:layout_marginBottom="24dp"/>
+                      <Button android:id="@+id/btnStart"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:text="Verifikasi Kode"
+                          android:backgroundTint="#00B8D4"
+                          android:textColor="#FFFFFF"
+                          android:textStyle="bold"/>
+                  </LinearLayout>
+              </LinearLayout>
+
+              <LinearLayout android:id="@+id/layoutAnim"
+                  android:layout_width="match_parent"
+                  android:layout_height="match_parent"
+                  android:orientation="vertical"
+                  android:gravity="center"
+                  android:visibility="gone"
+                  android:background="#CC000000">
+                  <ImageView android:id="@+id/imgAnim"
+                      android:layout_width="120dp"
+                      android:layout_height="120dp" />
+                  <TextView android:id="@+id/tvAnimText"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:textSize="20sp"
+                      android:textStyle="bold"
+                      android:textColor="#FFFFFF"
+                      android:layout_marginTop="16dp"
+                      android:layout_marginBottom="24dp"
+                      android:gravity="center"/>
+                  <Button android:id="@+id/btnActivateRobot"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="Aktifkan Robot"
+                      android:backgroundTint="#00E5FF"
+                      android:textColor="#000000"
+                      android:textStyle="bold"
+                      android:padding="16dp"
+                      android:visibility="gone"/>
+              </LinearLayout>
+
+              <TextView android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="DEVELOPER KELZZZ"
+                  android:textColor="#FFFFFF"
+                  android:textSize="14sp"
+                  android:textStyle="bold"
+                  android:layout_alignParentBottom="true"
+                  android:layout_centerHorizontal="true"
+                  android:layout_marginBottom="24dp"/>
+          </RelativeLayout>
+          EOF
+
+          cat > app/src/main/res/layout/floating_bubble.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent">
+              <ImageView android:layout_width="match_parent"
+                  android:layout_height="match_parent"
+                  android:src="@drawable/robot_icon"
+                  android:scaleType="fitCenter"/>
+          </FrameLayout>
+          EOF
+
+          cat > app/src/main/res/layout/floating_menu.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="280dp"
+              android:layout_height="wrap_content"
+              android:orientation="vertical"
+              android:background="@drawable/bg_menu_white"
+              android:padding="16dp"
+              android:elevation="8dp">
+
+              <LinearLayout android:id="@+id/menuJawab"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:orientation="horizontal"
+                  android:gravity="center_vertical"
+                  android:padding="12dp"
+                  android:background="?android:attr/selectableItemBackground">
+                  <TextView android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="✏️"
+                      android:textSize="24sp"
+                      android:layout_marginEnd="12dp"/>
+                  <TextView android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="Jawaban Singkat"
+                      android:textColor="#333333"
+                      android:textSize="17sp"
+                      android:textStyle="bold"/>
+              </LinearLayout>
+
+              <LinearLayout android:id="@+id/menuPenjelasan"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:orientation="horizontal"
+                  android:gravity="center_vertical"
+                  android:padding="12dp"
+                  android:background="?android:attr/selectableItemBackground">
+                  <TextView android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="📖"
+                      android:textSize="24sp"
+                      android:layout_marginEnd="12dp"/>
+                  <TextView android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="Penjelasan Lengkap"
+                      android:textColor="#333333"
+                      android:textSize="17sp"
+                      android:textStyle="bold"/>
+              </LinearLayout>
+
+              <LinearLayout android:id="@+id/menuEsai"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:orientation="horizontal"
+                  android:gravity="center_vertical"
+                  android:padding="12dp"
+                  android:background="?android:attr/selectableItemBackground">
+                  <TextView android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="💬"
+                      android:textSize="24sp"
+                      android:layout_marginEnd="12dp"/>
+                  <TextView android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="Jawab Esai"
+                      android:textColor="#333333"
+                      android:textSize="17sp"
+                      android:textStyle="bold"/>
+              </LinearLayout>
+
+              <LinearLayout android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:orientation="horizontal"
+                  android:gravity="center_vertical"
+                  android:padding="12dp">
+                  <TextView android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="👁️"
+                      android:textSize="24sp"
+                      android:layout_marginEnd="12dp"/>
+                  <TextView android:layout_width="0dp"
+                      android:layout_weight="1"
+                      android:layout_height="wrap_content"
+                      android:text="Mode Samaran"
+                      android:textColor="#333333"
+                      android:textSize="17sp"
+                      android:textStyle="bold"/>
+                  <Switch android:id="@+id/switchSamaran"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"/>
+              </LinearLayout>
+
+              <View android:layout_width="match_parent"
+                  android:layout_height="1dp"
+                  android:background="#EEEEEE"
+                  android:layout_marginTop="8dp"
+                  android:layout_marginBottom="8dp"/>
+
+              <TextView android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:text="Klik robot 4x untuk MATIKAN"
+                  android:textColor="#FF1744"
+                  android:textSize="12sp"
+                  android:textStyle="bold"
+                  android:gravity="center"/>
+          </LinearLayout>
+          EOF
+
+          cat > app/src/main/res/layout/floating_loading.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:background="#88000000">
+              <LinearLayout android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:orientation="vertical"
+                  android:layout_gravity="center"
+                  android:gravity="center">
+                  <ProgressBar android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:indeterminateTint="#00E5FF"/>
+                  <TextView android:id="@+id/tvLoadingText"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="AI memproses..."
+                      android:textColor="#FFFFFF"
+                      android:textStyle="bold"
+                      android:layout_marginTop="16dp"
+                      android:gravity="center"/>
+                  <Button android:id="@+id/btnHideLoading"
+                      android:layout_width="wrap_content"
+                      android:layout_height="40dp"
+                      android:text="Sembunyikan"
+                      android:backgroundTint="#333333"
+                      android:textColor="#FFFFFF"
+                      android:layout_marginTop="16dp"
+                      android:visibility="gone"/>
+              </LinearLayout>
+          </FrameLayout>
+          EOF
+
+          cat > app/src/main/res/layout/floating_answer.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:id="@+id/rootAnswer"
+              android:layout_width="320dp"
+              android:layout_height="wrap_content"
+              android:orientation="vertical"
+              android:background="@drawable/bg_menu_white"
+              android:padding="20dp"
+              android:elevation="10dp">
+              <TextView android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:text="Hasil:"
+                  android:textColor="#00B8D4"
+                  android:textStyle="bold"
+                  android:textSize="16sp"
+                  android:layout_marginBottom="12dp"/>
+              <ScrollView android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:maxHeight="400dp">
+                  <TextView android:id="@+id/tvAnswer"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:textColor="#333333"
+                      android:textSize="15sp"
+                      android:lineSpacingExtra="6dp"/>
+              </ScrollView>
+              <Button android:id="@+id/btnCopy"
+                  android:layout_width="match_parent"
+                  android:layout_height="40dp"
+                  android:text="Copy Jawaban"
+                  android:backgroundTint="#00B8D4"
+                  android:textColor="#FFFFFF"
+                  android:textStyle="bold"
+                  android:layout_marginTop="12dp"/>
+              <Button android:id="@+id/btnClose"
+                  android:layout_width="match_parent"
+                  android:layout_height="40dp"
+                  android:text="Tutup"
+                  android:backgroundTint="#E0E0E0"
+                  android:textColor="#333333"
+                  android:textStyle="bold"
+                  android:layout_marginTop="8dp"/>
+          </LinearLayout>
+          EOF
+
+          # --- KOTLIN ---
+          cat > app/src/main/java/com/example/floatai/MainActivity.kt << 'EOF'
+          package com.example.floatai
+
+          import android.app.Activity
+          import android.content.Intent
+          import android.media.projection.MediaProjectionManager
+          import android.net.Uri
+          import android.os.Build
+          import android.os.Bundle
+          import android.os.Handler
+          import android.os.Looper
+          import android.provider.Settings
+          import android.view.View
+          import android.view.animation.AnimationUtils
+          import android.widget.Button
+          import android.widget.EditText
+          import android.widget.ImageView
+          import android.widget.LinearLayout
+          import android.widget.TextView
+          import android.widget.Toast
+
+          class MainActivity : Activity() {
+              private val projectionManager by lazy {
+                  getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+              }
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_main)
+
+                  val etLicense = findViewById<EditText>(R.id.etLicenseKey)
+                  val etApiKey = findViewById<EditText>(R.id.etApiKey)
+                  val layoutForm = findViewById<LinearLayout>(R.id.layoutForm)
+                  val layoutAnim = findViewById<LinearLayout>(R.id.layoutAnim)
+                  val imgAnim = findViewById<ImageView>(R.id.imgAnim)
+                  val tvAnimText = findViewById<TextView>(R.id.tvAnimText)
+                  val btnActivate = findViewById<Button>(R.id.btnActivateRobot)
+
+                  val prefs = getSharedPreferences("FloatAIPrefs", MODE_PRIVATE)
+                  etApiKey.setText(prefs.getString("api_key", ""))
+
+                  findViewById<Button>(R.id.btnStart).setOnClickListener {
+                      val inputKey = etLicense.text.toString().trim().uppercase()
+                      val apiKey = etApiKey.text.toString().trim()
+
+                      layoutForm.visibility = View.GONE
+                      layoutAnim.visibility = View.VISIBLE
+                      btnActivate.visibility = View.GONE
+
+                      var isValid = false
+                      if (inputKey.startsWith("PRM-") || inputKey.startsWith("TRL-")) {
+                          if (apiKey.isNotEmpty() && apiKey.startsWith("sk-or-")) isValid = true
+                      }
+
+                      if (isValid) {
+                          imgAnim.setImageResource(R.drawable.ic_check_green)
+                          tvAnimText.text = "Kode Valid!\nAPI Key OpenRouter tersimpan."
+                          tvAnimText.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
+                          
+                          prefs.edit()
+                              .putString("api_key", apiKey)
+                              .putString("license_key", inputKey)
+                              .apply()
+
+                          Handler(Looper.getMainLooper()).postDelayed({
+                              btnActivate.visibility = View.VISIBLE
+                          }, 600)
+                      } else {
+                          imgAnim.setImageResource(R.drawable.ic_close_red)
+                          tvAnimText.text = "Kode Salah / API Key OpenRouter tidak valid!"
+                          tvAnimText.setTextColor(android.graphics.Color.parseColor("#FF1744"))
+                      }
+
+                      val anim = AnimationUtils.loadAnimation(this, R.anim.zoom_in)
+                      imgAnim.startAnimation(anim)
+                      tvAnimText.startAnimation(anim)
+                  }
+
+                  btnActivate.setOnClickListener {
+                      startRobot()
+                  }
+              }
+
+              private fun startRobot() {
+                  if (!Settings.canDrawOverlays(this)) {
+                      Toast.makeText(this, "Izinkan overlay dulu!", Toast.LENGTH_LONG).show()
+                      startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                      return
+                  }
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                      requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 200)
+                  }
+                  startActivityForResult(projectionManager.createScreenCaptureIntent(), 1001)
+              }
+
+              override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+                  super.onActivityResult(requestCode, resultCode, data)
+                  if (requestCode == 1001 && resultCode == RESULT_OK && data != null) {
+                      ScreenCaptureHelper.resultCode = resultCode
+                      ScreenCaptureHelper.data = data
+                      val intent = Intent(this, FloatingService::class.java)
+                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                          startForegroundService(intent)
+                      } else {
+                          startService(intent)
+                      }
+                      finish()
+                  }
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/floatai/ScreenCaptureHelper.kt << 'EOF'
+          package com.example.floatai
+
+          import android.content.Intent
+
+          object ScreenCaptureHelper {
+              var resultCode: Int = 0
+              var data: Intent? = null
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/floatai/FloatingService.kt << 'EOF'
+          package com.example.floatai
+
+          import android.app.Notification
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.app.PendingIntent
+          import android.app.Service
+          import android.content.BroadcastReceiver
+          import android.content.ClipData
+          import android.content.ClipboardManager
+          import android.content.Context
+          import android.content.Intent
+          import android.content.IntentFilter
+          import android.graphics.Bitmap
+          import android.graphics.PixelFormat
+          import android.hardware.display.DisplayManager
+          import android.hardware.display.VirtualDisplay
+          import android.media.ImageReader
+          import android.media.projection.MediaProjection
+          import android.media.projection.MediaProjectionManager
+          import android.os.Build
+          import android.os.Handler
+          import android.os.IBinder
+          import android.os.Looper
+          import android.util.Base64
+          import android.view.Gravity
+          import android.view.LayoutInflater
+          import android.view.MotionEvent
+          import android.view.View
+          import android.view.WindowManager
+          import android.view.animation.AnimationUtils
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.Switch
+          import android.widget.TextView
+          import android.widget.Toast
+          import com.google.mlkit.vision.common.InputImage
+          import com.google.mlkit.vision.text.TextRecognition
+          import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+          import org.json.JSONArray
+          import org.json.JSONObject
+          import java.io.BufferedReader
+          import java.io.ByteArrayOutputStream
+          import java.io.InputStreamReader
+          import java.io.OutputStreamWriter
+          import java.net.HttpURLConnection
+          import java.net.URL
+          import kotlin.concurrent.thread
+
+          class FloatingService : Service() {
+
+              private lateinit var windowManager: WindowManager
+              private lateinit var bubbleView: View
+              private var answerView: View? = null
+              private var menuView: View? = null
+              private var loadingView: View? = null
+              private var API_KEY = ""
+              private var isHidden = false
+              private var lastAnswer = ""
+
+              private var cooldownEndTime = 0L
+              private var cooldownHandler = Handler(Looper.getMainLooper())
+              private var cooldownRunnable: Runnable? = null
+
+              private var mediaProjection: MediaProjection? = null
+              private var virtualDisplay: VirtualDisplay? = null
+              private var imageReader: ImageReader? = null
+
+              private val stopReceiver = object : BroadcastReceiver() {
+                  override fun onReceive(context: Context?, intent: Intent?) {
+                      cleanupAndStop()
+                  }
+              }
+
+              private val projectionCallback = object : MediaProjection.Callback() {
+                  override fun onStop() {
+                      releaseProjection()
+                  }
+              }
+
+              override fun onBind(intent: Intent?): IBinder? = null
+
+              override fun onCreate() {
+                  super.onCreate()
+                  val prefs = getSharedPreferences("FloatAIPrefs", MODE_PRIVATE)
+                  API_KEY = prefs.getString("api_key", "") ?: ""
+
+                  registerStopReceiver()
+                  startForegroundNotification()
+                  showBubble()
+              }
+
+              private fun registerStopReceiver() {
+                  val filter = IntentFilter("STOP_ROBOT")
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                      registerReceiver(stopReceiver, filter, RECEIVER_NOT_EXPORTED)
+                  } else {
+                      registerReceiver(stopReceiver, filter)
+                  }
+              }
+
+              private fun startForegroundNotification() {
+                  val channelId = "float_ai"
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      val channel = NotificationChannel(
+                          channelId, "FloatAI Service", NotificationManager.IMPORTANCE_LOW
+                      )
+                      getSystemService(NotificationManager::class.java)
+                          .createNotificationChannel(channel)
+                  }
+
+                  val intentOpen = Intent(this, MainActivity::class.java).apply {
+                      flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                  }
+                  val pendingIntentOpen = PendingIntent.getActivity(
+                      this, 0, intentOpen, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                  )
+
+                  val intentStop = Intent("STOP_ROBOT")
+                  val pendingIntentStop = PendingIntent.getBroadcast(
+                      this, 1, intentStop, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                  )
+
+                  val builder: Notification.Builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      Notification.Builder(this, channelId)
+                  } else {
+                      @Suppress("DEPRECATION")
+                      Notification.Builder(this)
+                  }
+
+                  val notif: Notification = builder
+                      .setContentTitle("AI Floating Service")
+                      .setContentText("Robot siaga membantu. Klik untuk buka app.")
+                      .setSmallIcon(R.drawable.ic_notification)
+                      .setContentIntent(pendingIntentOpen)
+                      .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Matikan Robot", pendingIntentStop)
+                      .setOngoing(true)
+                      .build()
+
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                      startForeground(1, notif, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+                  } else {
+                      startForeground(1, notif)
+                  }
+              }
+
+              private fun cleanupAndStop() {
+                  closeMenu()
+                  if (answerView != null) {
+                      try { windowManager.removeView(answerView) } catch (_: Exception) {}
+                      answerView = null
+                  }
+                  hideLoadingView()
+                  if (::bubbleView.isInitialized) {
+                      try { windowManager.removeView(bubbleView) } catch (_: Exception) {}
+                  }
+                  releaseProjection()
+                  stopSelf()
+              }
+
+              private fun releaseProjection() {
+                  try { virtualDisplay?.release() } catch (_: Exception) {}
+                  virtualDisplay = null
+                  try { imageReader?.close() } catch (_: Exception) {}
+                  imageReader = null
+                  try { mediaProjection?.stop() } catch (_: Exception) {}
+                  mediaProjection = null
+              }
+
+              override fun onDestroy() {
+                  super.onDestroy()
+                  try { unregisterReceiver(stopReceiver) } catch (_: Exception) {}
+                  releaseProjection()
+                  cooldownRunnable?.let { cooldownHandler.removeCallbacks(it) }
+              }
+
+              private fun showBubble() {
+                  windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+                  bubbleView = LayoutInflater.from(this).inflate(R.layout.floating_bubble, null)
+                  val params = WindowManager.LayoutParams(
+                      150, 150,
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                      PixelFormat.TRANSLUCENT                  )
+                  params.gravity = Gravity.TOP or Gravity.START
+                  params.x = 100
+                  params.y = 300
+
+                  val floatAnim = AnimationUtils.loadAnimation(this, R.anim.floating_anim)
+                  bubbleView.startAnimation(floatAnim)
+
+                  bubbleView.setOnTouchListener(object : View.OnTouchListener {
+                      var initialX = 0
+                      var initialY = 0
+                      var touchX = 0f
+                      var touchY = 0f
+                      override fun onTouch(v: View, event: MotionEvent): Boolean {
+                          when (event.action) {
+                              MotionEvent.ACTION_DOWN -> {
+                                  initialX = params.x
+                                  initialY = params.y
+                                  touchX = event.rawX
+                                  touchY = event.rawY
+                                  return false
+                              }
+                              MotionEvent.ACTION_MOVE -> {
+                                  params.x = initialX + (event.rawX - touchX).toInt()
+                                  params.y = initialY + (event.rawY - touchY).toInt()
+                                  try { windowManager.updateViewLayout(bubbleView, params) } catch (_: Exception) {}
+                                  return true
+                              }
+                          }
+                          return false
+                      }
+                  })
+
+                  var clickCount = 0
+                  var lastClickTime = 0L
+                  
+                  bubbleView.setOnClickListener {
+                      val currentTime = System.currentTimeMillis()
+                      if (currentTime - lastClickTime < 400) {
+                          clickCount++
+                      } else {
+                          clickCount = 1
+                      }
+                      lastClickTime = currentTime
+
+                      Handler(Looper.getMainLooper()).postDelayed({
+                          if (System.currentTimeMillis() - lastClickTime >= 400) {
+                              when (clickCount) {
+                                  1 -> {
+                                      if (isHidden) {
+                                      } else {
+                                          showMenu()
+                                      }
+                                  }
+                                  2 -> {
+                                      if (isHidden) {
+                                          isHidden = false
+                                          bubbleView.alpha = 1.0f
+                                      } else {
+                                          closeMenu()
+                                      }
+                                  }
+                                  4 -> {
+                                      Toast.makeText(this@FloatingService, "Robot dimatikan total!", Toast.LENGTH_SHORT).show()
+                                      cleanupAndStop()
+                                  }
+                              }
+                              clickCount = 0
+                          }
+                      }, 400)
+                  }
+                  windowManager.addView(bubbleView, params)
+              }
+
+              private fun showMenu() {
+                  if (menuView != null) return
+                  menuView = LayoutInflater.from(this).inflate(R.layout.floating_menu, null)
+                  val params = WindowManager.LayoutParams(
+                      WindowManager.LayoutParams.WRAP_CONTENT,
+                      WindowManager.LayoutParams.WRAP_CONTENT,
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                      PixelFormat.TRANSLUCENT
+                  )
+                  params.gravity = Gravity.CENTER
+
+                  menuView!!.findViewById<LinearLayout>(R.id.menuJawab).setOnClickListener {
+                      closeMenu(); checkCooldownAndProceed("JAWAB")
+                  }
+                  menuView!!.findViewById<LinearLayout>(R.id.menuPenjelasan).setOnClickListener {
+                      closeMenu(); checkCooldownAndProceed("PENJELASAN")
+                  }
+                  menuView!!.findViewById<LinearLayout>(R.id.menuEsai).setOnClickListener {
+                      closeMenu(); checkCooldownAndProceed("ESAI")
+                  }
+                  val switchSamaran = menuView!!.findViewById<Switch>(R.id.switchSamaran)
+                  switchSamaran.isChecked = isHidden
+                  switchSamaran.setOnCheckedChangeListener { _, isChecked ->
+                      isHidden = isChecked
+                      bubbleView.alpha = if (isHidden) 0.01f else 1.0f
+                  }
+                  windowManager.addView(menuView, params)
+              }
+
+              private fun closeMenu() {
+                  if (menuView != null) {
+                      try { windowManager.removeView(menuView) } catch (_: Exception) {}
+                      menuView = null
+                  }
+              }
+
+              private fun checkCooldownAndProceed(mode: String) {
+                  val currentTime = System.currentTimeMillis()
+                  if (currentTime < cooldownEndTime) {
+                      val remainingSeconds = ((cooldownEndTime - currentTime) / 1000).toInt() + 1
+                      showLoadingWithMessage("Tunggu limit AI...\n${remainingSeconds} detik lagi", true)
+                      
+                      cooldownRunnable?.let { cooldownHandler.removeCallbacks(it) }
+                      cooldownRunnable = object : Runnable {
+                          override fun run() {
+                              val now = System.currentTimeMillis()
+                              if (now >= cooldownEndTime) {
+                                  hideLoadingView()
+                                  Toast.makeText(this@FloatingService, "Waktu tunggu habis! Silakan klik menu lagi.", Toast.LENGTH_SHORT).show()
+                              } else {
+                                  val sec = ((cooldownEndTime - now) / 1000).toInt() + 1
+                                  (loadingView?.findViewById<TextView>(R.id.tvLoadingText))?.text = "Tunggu limit AI...\n${sec} detik lagi"
+                                  cooldownHandler.postDelayed(this, 1000)
+                              }
+                          }
+                      }
+                      cooldownHandler.postDelayed(cooldownRunnable!!, 1000)
+                      return
+                  }
+                  
+                  cooldownEndTime = 0L 
+                  showLoadingAndCapture(mode)
+              }
+
+              private fun showLoadingWithMessage(message: String, canHide: Boolean = false) {
+                  hideLoadingView()
+                  loadingView = LayoutInflater.from(this).inflate(R.layout.floating_loading, null)
+                  val params = WindowManager.LayoutParams(
+                      WindowManager.LayoutParams.MATCH_PARENT,
+                      WindowManager.LayoutParams.MATCH_PARENT,
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                      PixelFormat.TRANSLUCENT
+                  )
+                  
+                  loadingView!!.findViewById<TextView>(R.id.tvLoadingText).text = message
+                  
+                  val btnHide = loadingView!!.findViewById<Button>(R.id.btnHideLoading)
+                  if (canHide) {
+                      btnHide.visibility = View.VISIBLE
+                      btnHide.setOnClickListener {
+                          hideLoadingView()
+                          closeMenu()
+                          isHidden = true
+                          bubbleView.alpha = 0.01f
+                          Toast.makeText(this, "Robot disembunyikan. (Klik 2x di posisi robot untuk memunculkan)", Toast.LENGTH_LONG).show()
+                      }
+                  } else {
+                      btnHide.visibility = View.GONE
+                  }
+
+                  windowManager.addView(loadingView, params)
+              }
+
+              private fun hideLoadingView() {
+                  if (loadingView != null) {
+                      try { windowManager.removeView(loadingView) } catch (_: Exception) {}
+                      loadingView = null
+                  }
+              }
+
+              private fun showLoadingAndCapture(mode: String) {
+                  showLoadingWithMessage("AI memproses...", false)
+                  Handler(Looper.getMainLooper()).postDelayed({ captureAndSolve(mode) }, 500)
+              }
+
+              private fun captureAndSolve(mode: String) {
+                  try {
+                      val data = ScreenCaptureHelper.data
+                      if (data == null) {
+                          hideLoadingView()
+                          showResult("Data screen capture hilang. Silakan restart app.")
+                          return
+                      }
+                      val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+
+                      releaseProjection()
+                      mediaProjection = mpManager.getMediaProjection(ScreenCaptureHelper.resultCode, data)
+                      if (mediaProjection == null) {
+                          hideLoadingView()
+                          showResult("Gagal dapat MediaProjection.")
+                          return
+                      }
+                      mediaProjection!!.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
+
+                      val metrics = resources.displayMetrics
+                      val w = metrics.widthPixels
+                      val h = metrics.heightPixels
+                      val density = metrics.densityDpi
+
+                      imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+                      virtualDisplay = mediaProjection!!.createVirtualDisplay(
+                          "cap", w, h, density,
+                          DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                          imageReader!!.surface, null, null
+                      )
+
+                      thread {
+                          try {
+                              Thread.sleep(400)
+                              val image = imageReader?.acquireLatestImage()
+                              if (image == null) {
+                                  Handler(Looper.getMainLooper()).post {
+                                      hideLoadingView()
+                                      showResult("Gagal ambil frame. Coba lagi.")
+                                  }
+                                  return@thread
+                              }
+                              val planes = image.planes
+                              val buffer = planes[0].buffer
+                              val pixelStride = planes[0].pixelStride
+                              val rowStride = planes[0].rowStride
+                              val rowPadding = rowStride - pixelStride * w
+                              val bitmap = Bitmap.createBitmap(
+                                  w + rowPadding / pixelStride, h, Bitmap.Config.ARGB_8888
+                              )
+                              bitmap.copyPixelsFromBuffer(buffer)
+                              image.close()
+                              val cropped = Bitmap.createBitmap(bitmap, 0, 0, w, h)
+                              
+                              processImageWithOCR(cropped, mode)
+                              
+                          } catch (e: Exception) {
+                              Handler(Looper.getMainLooper()).post {
+                                  hideLoadingView()
+                                  showResult("Gagal memotret layar: ${e.message}")
+                              }
+                          } finally {
+                              releaseProjection()
+                          }
+                      }
+                  } catch (e: Exception) {
+                      hideLoadingView()
+                      showResult("Error Capture: ${e.message}")
+                  }
+              }
+
+              private fun processImageWithOCR(bitmap: Bitmap, mode: String) {
+                  val image = InputImage.fromBitmap(bitmap, 0)
+                  val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+
+                  recognizer.process(image)
+                      .addOnSuccessListener { visionText ->
+                          askAIWithImage(bitmap, mode, visionText.text)
+                      }
+                      .addOnFailureListener { e ->
+                          askAIWithImage(bitmap, mode, "")
+                      }
+              }
+
+              private fun askAIWithImage(bitmap: Bitmap, mode: String, extractedText: String) {
+                  thread {
+                      try {
+                          val maxDim = 720
+                          val scale = if (bitmap.width > bitmap.height) maxDim.toFloat() / bitmap.width else maxDim.toFloat() / bitmap.height
+                          val resizedBitmap = if (scale < 1.0f) {
+                              Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
+                          } else {
+                              bitmap
+                          }
+
+                          val stream = ByteArrayOutputStream()
+                          resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 60, stream)
+                          val base64Image = Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
+
+                          var finalPrompt = when (mode) {
+                              "JAWAB" -> "Baca soal pada gambar. Berikan HANYA jawaban akhirnya saja (1 kata atau opsi A/B/C/D). Jangan tambahkan penjelasan apapun."
+                              "PENJELASAN" -> "Baca soal pada gambar. Berikan jawaban akhirnya, lalu jelaskan secara SINGKAT kenapa jawaban itu benar. Maksimal 3-4 baris kalimat."
+                              "ESAI" -> "Baca soal esai pada gambar. Berikan jawaban esai yang JELAS dan LENGKAP namun tidak terlalu panjang. Sertakan cara/langkah penyelesaiannya secara singkat (misalnya: 1+1=2, jelaskan cara mendapatkannya), lalu akhiri dengan jawaban akhir."
+                              else -> "Baca soal pada gambar. Berikan jawaban yang sesuai."
+                          }
+
+                          if (extractedText.isNotBlank()) {
+                              finalPrompt += "\n\nTeks yang terbaca dari layar (gunakan sebagai referensi tambahan jika gambar kurang jelas):\n\"$extractedText\""
+                          }
+
+                          val url = URL("https://openrouter.ai/api/v1/chat/completions")
+                          val conn = url.openConnection() as HttpURLConnection
+                          conn.requestMethod = "POST"
+                          conn.setRequestProperty("Authorization", "Bearer $API_KEY")
+                          conn.setRequestProperty("Content-Type", "application/json")
+                          conn.connectTimeout = 15000
+                          conn.readTimeout = 30000
+                          conn.doOutput = true
+
+                          val messages = JSONArray()
+                          val userMsg = JSONObject().apply {
+                              put("role", "user")
+                              val content = JSONArray()
+                              content.put(JSONObject().apply {
+                                  put("type", "text")
+                                  put("text", finalPrompt)
+                              })
+                              content.put(JSONObject().apply {
+                                  put("type", "image_url")
+                                  put("image_url", JSONObject().apply {
+                                      put("url", "data:image/jpeg;base64,$base64Image")
+                                  })
+                              })
+                              put("content", content)
+                          }
+                          messages.put(userMsg)
+
+                          val body = JSONObject().apply {
+                              // MODEL BARU: GPT-4o-mini via OpenRouter
+                              put("model", "openai/gpt-4o-mini")
+                              put("messages", messages)
+                              put("temperature", 0.2)
+                              put("max_tokens", 1024)
+                          }
+
+                          OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
+
+                          val responseCode = conn.responseCode
+                          val inputStream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
+                          val reader = BufferedReader(InputStreamReader(inputStream))
+                          val response = reader.readText()
+                          reader.close()
+                          conn.disconnect()
+
+                          if (responseCode == 429) { 
+                              val retryAfterCapped = 60L
+                              cooldownEndTime = System.currentTimeMillis() + (retryAfterCapped * 1000)
+                              
+                              Handler(Looper.getMainLooper()).post {
+                                  hideLoadingView()
+                                  showResult("AI limit tercapai (Rate Limit).\nAplikasi akan siap dalam $retryAfterCapped detik.\n\n(Tutup pesan ini, timer tetap berjalan)")
+                              }
+                              return@thread
+                          } else if (responseCode !in 200..299) {
+                              Handler(Looper.getMainLooper()).post {
+                                  hideLoadingView()
+                                  showResult("API Error ($responseCode): ${response.take(300)}")
+                              }
+                              return@thread
+                          }
+
+                          val jsonResponse = JSONObject(response)
+                          val choices = jsonResponse.optJSONArray("choices")
+                          val answerText = choices?.optJSONObject(0)
+                              ?.optJSONObject("message")
+                              ?.optString("content")
+                              ?: "Tidak ada jawaban."
+
+                          Handler(Looper.getMainLooper()).post {
+                              hideLoadingView()
+                              showResult(answerText.trim())
+                          }
+                      } catch (e: Exception) {
+                          Handler(Looper.getMainLooper()).post {
+                              hideLoadingView()
+                              showResult("Error: ${e.message}")
+                          }
+                      }
+                  }
+              }
+
+              private fun showResult(text: String) {
+                  lastAnswer = text
+                  if (answerView != null) {
+                      try { windowManager.removeView(answerView) } catch (_: Exception) {}
+                      answerView = null
+                  }
+                  answerView = LayoutInflater.from(this).inflate(R.layout.floating_answer, null)
+                  val params = WindowManager.LayoutParams(
+                      WindowManager.LayoutParams.WRAP_CONTENT,
+                      WindowManager.LayoutParams.WRAP_CONTENT,
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                      PixelFormat.TRANSLUCENT
+                  )
+                  params.gravity = Gravity.CENTER
+
+                  answerView!!.findViewById<TextView>(R.id.tvAnswer).text = text
+                  answerView!!.findViewById<Button>(R.id.btnCopy).setOnClickListener {
+                      val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                      cm.setPrimaryClip(ClipData.newPlainText("FloatAI", lastAnswer))
+                      Toast.makeText(this, "Tersalin!", Toast.LENGTH_SHORT).show()
+                  }
+                  answerView!!.findViewById<Button>(R.id.btnClose).setOnClickListener {
+                      if (answerView != null) {
+                          try { windowManager.removeView(answerView) } catch (_: Exception) {}
+                          answerView = null
+                      }
+                  }
+                  windowManager.addView(answerView, params)
+              }
+          }
+          EOF
+
+      - name: Build APK
+        run: |
+          chmod +x gradlew 2>/dev/null || true
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.2
+          fi
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FloatAI-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
